@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "352858476035",
+    "project_id": "tunexa-social-app",
+    "storage_bucket": "tunexa-social-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:352858476035:android:1bb00b3a5a9978f7f7c836",
+        "android_client_info": {
+          "package_name": "com.example.tunexa_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDRO9MP5YKmVj-_UDnqn_B7EJF0RH44FGA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
