@@ -11,69 +11,83 @@ class UploadScreen extends StatefulWidget {
 
 class _UploadScreenState extends State<UploadScreen> {
   final captionController = TextEditingController();
+
   final imageUrlController = TextEditingController();
 
-  bool isUploading = false;
+  bool isLoading = false;
 
-  void setSampleImage(int number) {
-    setState(() {
-      imageUrlController.text = "https://picsum.photos/400/400?random=$number";
+  @override
+  void initState() {
+    super.initState();
+
+    imageUrlController.addListener(() {
+      setState(() {});
     });
   }
 
   Future<void> uploadPost() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+    final currentUser = FirebaseAuth.instance.currentUser;
 
-    if (captionController.text.trim().isEmpty &&
-        imageUrlController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Write caption or add image URL")),
-      );
+    if (currentUser == null) {
       return;
     }
 
-    try {
-      setState(() {
-        isUploading = true;
-      });
+    if (captionController.text.trim().isEmpty &&
+        imageUrlController.text.trim().isEmpty) {
+      return;
+    }
 
+    setState(() {
+      isLoading = true;
+    });
+
+    try {
       final userDoc = await FirebaseFirestore.instance
           .collection("users")
-          .doc(user.uid)
+          .doc(currentUser.uid)
           .get();
 
       final userData = userDoc.data();
 
       await FirebaseFirestore.instance.collection("posts").add({
-        "uid": user.uid,
         "caption": captionController.text.trim(),
+
         "imageUrl": imageUrlController.text.trim(),
+
+        "uid": currentUser.uid,
+
         "userName": userData?["name"] ?? "User",
+
         "username": userData?["username"] ?? "user",
+
+        "photoUrl": userData?["photoUrl"] ?? "",
+
         "likes": [],
+
+        "edited": false,
+
         "createdAt": DateTime.now(),
       });
 
       captionController.clear();
       imageUrlController.clear();
 
-      setState(() {
-        isUploading = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Post uploaded successfully")),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("Post uploaded")));
+      }
     } catch (e) {
-      setState(() {
-        isUploading = false;
-      });
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.toString())));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Error: $e")));
+      }
     }
+
+    setState(() {
+      isLoading = false;
+    });
   }
 
   @override
@@ -85,148 +99,118 @@ class _UploadScreenState extends State<UploadScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final imageUrl = imageUrlController.text.trim();
-
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Create Post"),
+        title: const Text("Upload"),
         backgroundColor: Colors.black,
       ),
+
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16),
+
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+
           children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: Colors.grey[900],
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: Column(
-                children: [
-                  const Icon(
-                    Icons.add_photo_alternate,
-                    size: 70,
-                    color: Colors.purple,
-                  ),
-                  const SizedBox(height: 10),
-                  const Text(
-                    "Create something new",
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    "Add a caption and optional image URL",
-                    style: TextStyle(color: Colors.grey[400]),
-                  ),
-                ],
-              ),
+            const Text(
+              "Create Post",
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
 
             const SizedBox(height: 20),
 
             TextField(
               controller: captionController,
+
               maxLines: 4,
-              style: const TextStyle(color: Colors.white),
+
               decoration: InputDecoration(
-                hintText: "What's on your mind?",
-                hintStyle: const TextStyle(color: Colors.grey),
-                filled: true,
-                fillColor: Colors.grey[900],
+                hintText: "Write a caption...",
+
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
 
             TextField(
               controller: imageUrlController,
-              style: const TextStyle(color: Colors.white),
-              onChanged: (_) {
-                setState(() {});
-              },
+
               decoration: InputDecoration(
-                hintText: "Paste image URL optional",
-                hintStyle: const TextStyle(color: Colors.grey),
-                prefixIcon: const Icon(Icons.link, color: Colors.purple),
-                filled: true,
-                fillColor: Colors.grey[900],
+                hintText: "Paste image URL...",
+
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
             ),
 
-            const SizedBox(height: 12),
-
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => setSampleImage(1),
-                    child: const Text("Sample 1"),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => setSampleImage(2),
-                    child: const Text("Sample 2"),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => setSampleImage(3),
-                    child: const Text("Sample 3"),
-                  ),
-                ),
-              ],
-            ),
-
             const SizedBox(height: 20),
 
-            if (imageUrl.isNotEmpty)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: Image.network(
-                  imageUrl,
-                  height: 240,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      height: 140,
+            if (imageUrlController.text.trim().isNotEmpty)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "Preview",
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+
+                    child: Image.network(
+                      imageUrlController.text.trim(),
+
+                      height: 220,
+
                       width: double.infinity,
-                      alignment: Alignment.center,
-                      color: Colors.grey[900],
-                      child: const Text("Invalid image URL"),
-                    );
-                  },
-                ),
+
+                      fit: BoxFit.cover,
+
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) {
+                          return child;
+                        }
+
+                        return Container(
+                          height: 220,
+                          alignment: Alignment.center,
+                          color: Colors.grey[900],
+                          child: const CircularProgressIndicator(),
+                        );
+                      },
+
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          height: 220,
+                          alignment: Alignment.center,
+                          color: Colors.grey[900],
+                          child: const Text("Invalid image URL"),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
 
-            const SizedBox(height: 20),
+            const SizedBox(height: 25),
 
             SizedBox(
               width: double.infinity,
-              height: 52,
-              child: ElevatedButton.icon(
-                onPressed: isUploading ? null : uploadPost,
-                icon: const Icon(Icons.upload),
-                label: isUploading
-                    ? const CircularProgressIndicator(color: Colors.white)
+
+              height: 50,
+
+              child: ElevatedButton(
+                onPressed: isLoading ? null : uploadPost,
+
+                child: isLoading
+                    ? const CircularProgressIndicator()
                     : const Text("Upload Post"),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.purple,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
               ),
             ),
           ],

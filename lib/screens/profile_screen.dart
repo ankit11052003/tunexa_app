@@ -25,43 +25,63 @@ class ProfileScreen extends StatelessWidget {
     String currentName,
     String currentUsername,
     String currentBio,
+    String currentPhotoUrl,
   ) async {
     final nameController = TextEditingController(text: currentName);
     final usernameController = TextEditingController(text: currentUsername);
     final bioController = TextEditingController(text: currentBio);
+    final photoUrlController = TextEditingController(text: currentPhotoUrl);
 
     await showDialog(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           title: const Text("Edit Profile"),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(hintText: "Name"),
-              ),
-
-              const SizedBox(height: 10),
-
-              TextField(
-                controller: usernameController,
-                decoration: const InputDecoration(
-                  hintText: "Username",
-                  prefixText: "@",
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(hintText: "Name"),
                 ),
-              ),
 
-              const SizedBox(height: 10),
+                const SizedBox(height: 10),
 
-              TextField(
-                controller: bioController,
-                decoration: const InputDecoration(hintText: "Bio"),
-              ),
-            ],
+                TextField(
+                  controller: usernameController,
+                  decoration: const InputDecoration(
+                    hintText: "Username",
+                    prefixText: "@",
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                TextField(
+                  controller: bioController,
+                  decoration: const InputDecoration(hintText: "Bio"),
+                ),
+
+                const SizedBox(height: 10),
+
+                TextField(
+                  controller: photoUrlController,
+                  decoration: const InputDecoration(
+                    hintText: "Profile image URL",
+                  ),
+                ),
+              ],
+            ),
           ),
           actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+              },
+              child: const Text("Cancel"),
+            ),
+
             TextButton(
               onPressed: () async {
                 final newUsername = usernameController.text
@@ -95,9 +115,12 @@ class ProfileScreen extends StatelessWidget {
                       "name": nameController.text.trim(),
                       "username": newUsername,
                       "bio": bioController.text.trim(),
+                      "photoUrl": photoUrlController.text.trim(),
                     });
 
-                Navigator.pop(context);
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
+                }
               },
               child: const Text("Save"),
             ),
@@ -105,6 +128,11 @@ class ProfileScreen extends StatelessWidget {
         );
       },
     );
+
+    nameController.dispose();
+    usernameController.dispose();
+    bioController.dispose();
+    photoUrlController.dispose();
   }
 
   @override
@@ -125,6 +153,7 @@ class ProfileScreen extends StatelessWidget {
               );
             },
           ),
+
           IconButton(
             onPressed: () {
               logoutUser(context);
@@ -149,20 +178,26 @@ class ProfileScreen extends StatelessWidget {
 
                 final followers = userData["followers"] ?? [];
                 final following = userData["following"] ?? [];
+                final photoUrl = (userData["photoUrl"] ?? "").toString();
 
                 return SingleChildScrollView(
                   child: Column(
                     children: [
                       const SizedBox(height: 20),
 
-                      const CircleAvatar(
-                        radius: 50,
+                      CircleAvatar(
+                        radius: 55,
                         backgroundColor: Colors.purple,
-                        child: Icon(
-                          Icons.person,
-                          size: 50,
-                          color: Colors.white,
-                        ),
+                        backgroundImage: photoUrl.isNotEmpty
+                            ? NetworkImage(photoUrl)
+                            : null,
+                        child: photoUrl.isEmpty
+                            ? const Icon(
+                                Icons.person,
+                                size: 55,
+                                color: Colors.white,
+                              )
+                            : null,
                       ),
 
                       const SizedBox(height: 15),
@@ -267,6 +302,7 @@ class ProfileScreen extends StatelessWidget {
                             userData["name"] ?? "",
                             userData["username"] ?? "",
                             userData["bio"] ?? "",
+                            photoUrl,
                           );
                         },
                         child: const Text("Edit Profile"),

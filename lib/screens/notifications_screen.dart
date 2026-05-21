@@ -16,6 +16,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     if (createdAt == null) return "";
 
     final date = createdAt.toDate();
+
     return "${date.day}/${date.month}/${date.year}";
   }
 
@@ -36,10 +37,31 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
+  Future<void> clearAllNotifications(String uid) async {
+    final notifications = await FirebaseFirestore.instance
+        .collection("users")
+        .doc(uid)
+        .collection("notifications")
+        .get();
+
+    for (final doc in notifications.docs) {
+      await doc.reference.delete();
+    }
+  }
+
   IconData getIcon(String type) {
-    if (type == "like") return Icons.favorite;
-    if (type == "comment") return Icons.comment;
-    if (type == "follow") return Icons.person_add;
+    if (type == "like") {
+      return Icons.favorite;
+    }
+
+    if (type == "comment") {
+      return Icons.comment;
+    }
+
+    if (type == "follow") {
+      return Icons.person_add;
+    }
+
     return Icons.notifications;
   }
 
@@ -55,7 +77,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       appBar: AppBar(
         title: const Text("Notifications"),
         backgroundColor: Colors.black,
+
+        actions: [
+          if (currentUser != null)
+            IconButton(
+              onPressed: () {
+                clearAllNotifications(currentUser.uid);
+              },
+              icon: const Icon(Icons.delete_sweep),
+            ),
+        ],
       ),
+
       body: currentUser == null
           ? const Center(child: Text("Please login first"))
           : StreamBuilder<QuerySnapshot>(
@@ -78,7 +111,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
                 return ListView.builder(
                   padding: const EdgeInsets.all(10),
+
                   itemCount: notifications.length,
+
                   itemBuilder: (context, index) {
                     final data =
                         notifications[index].data() as Map<String, dynamic>;
@@ -87,13 +122,24 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
                     return Card(
                       color: Colors.grey[900],
+
                       child: ListTile(
                         leading: CircleAvatar(
                           backgroundColor: Colors.purple,
+
                           child: Icon(getIcon(type), color: Colors.white),
                         ),
+
                         title: Text(data["message"] ?? ""),
+
                         subtitle: Text(formatTime(data["createdAt"])),
+
+                        trailing: IconButton(
+                          onPressed: () async {
+                            await notifications[index].reference.delete();
+                          },
+                          icon: const Icon(Icons.close, color: Colors.red),
+                        ),
                       ),
                     );
                   },

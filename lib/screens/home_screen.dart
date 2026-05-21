@@ -7,6 +7,7 @@ import 'notifications_screen.dart';
 import 'stories_screen.dart';
 import 'messages_screen.dart';
 import 'user_profile_screen.dart';
+import 'upload_story_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -15,6 +16,7 @@ class HomeScreen extends StatelessWidget {
     if (createdAt == null) return "";
 
     final date = createdAt.toDate();
+
     return "${date.day}/${date.month}/${date.year}";
   }
 
@@ -35,13 +37,12 @@ class HomeScreen extends StatelessWidget {
         "likes": FieldValue.arrayUnion([userId]),
       });
 
-      final currentUserDoc = await FirebaseFirestore.instance
+      final userDoc = await FirebaseFirestore.instance
           .collection("users")
           .doc(userId)
           .get();
 
-      final currentUserData = currentUserDoc.data();
-      final currentUserName = currentUserData?["name"] ?? "Someone";
+      final userName = userDoc.data()?["name"] ?? "Someone";
 
       if (userId != postOwnerId) {
         await FirebaseFirestore.instance
@@ -50,7 +51,7 @@ class HomeScreen extends StatelessWidget {
             .collection("notifications")
             .add({
               "type": "like",
-              "message": "$currentUserName liked your post",
+              "message": "$userName liked your post",
               "fromUserId": userId,
               "isRead": false,
               "createdAt": DateTime.now(),
@@ -77,6 +78,51 @@ class HomeScreen extends StatelessWidget {
     await FirebaseFirestore.instance.collection("posts").doc(postId).delete();
   }
 
+  Future<void> reportPost(
+    BuildContext context,
+    String postId,
+    String postOwnerId,
+    String reporterId,
+  ) async {
+    await FirebaseFirestore.instance.collection("reports").add({
+      "postId": postId,
+      "postOwnerId": postOwnerId,
+      "reporterId": reporterId,
+      "reason": "Inappropriate content",
+      "status": "pending",
+      "createdAt": DateTime.now(),
+    });
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text("Post reported")));
+  }
+
+  void showShareSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.grey[900],
+      builder: (context) {
+        return Wrap(
+          children: const [
+            ListTile(
+              leading: Icon(Icons.copy, color: Colors.white),
+              title: Text("Copy post link"),
+            ),
+            ListTile(
+              leading: Icon(Icons.message, color: Colors.white),
+              title: Text("Send in message"),
+            ),
+            ListTile(
+              leading: Icon(Icons.share, color: Colors.white),
+              title: Text("Share outside app"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentUser = FirebaseAuth.instance.currentUser;
@@ -85,6 +131,7 @@ class HomeScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text("Tunexa"),
         backgroundColor: Colors.black,
+
         actions: [
           IconButton(
             onPressed: () {
@@ -96,53 +143,20 @@ class HomeScreen extends StatelessWidget {
             icon: const Icon(Icons.message),
           ),
 
-          if (currentUser != null)
-            StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection("users")
-                  .doc(currentUser.uid)
-                  .collection("notifications")
-                  .where("isRead", isEqualTo: false)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                final unreadCount = snapshot.data?.docs.length ?? 0;
-
-                return Stack(
-                  children: [
-                    IconButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const NotificationsScreen(),
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.notifications),
-                    ),
-
-                    if (unreadCount > 0)
-                      Positioned(
-                        right: 8,
-                        top: 8,
-                        child: CircleAvatar(
-                          radius: 9,
-                          backgroundColor: Colors.red,
-                          child: Text(
-                            "$unreadCount",
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                );
-              },
-            ),
+          IconButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const NotificationsScreen(),
+                ),
+              );
+            },
+            icon: const Icon(Icons.notifications),
+          ),
         ],
       ),
+
       body: currentUser == null
           ? const Center(child: Text("Please login first"))
           : StreamBuilder<DocumentSnapshot>(
@@ -150,49 +164,137 @@ class HomeScreen extends StatelessWidget {
                   .collection("users")
                   .doc(currentUser.uid)
                   .snapshots(),
+
               builder: (context, userSnapshot) {
                 final userData =
                     userSnapshot.data?.data() as Map<String, dynamic>?;
 
                 final savedPosts = userData?["savedPosts"] ?? [];
 
+                final blockedUsers = userData?["blockedUsers"] ?? [];
+
                 return Column(
                   children: [
-                    SizedBox(
-                      height: 100,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: 8,
-                        itemBuilder: (context, index) {
-                          final storyUserName = "User ${index + 1}";
+                    Padding(
+                      padding: const EdgeInsets.all(8),
 
-                          return GestureDetector(
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) =>
-                                      StoriesScreen(userName: storyUserName),
+                      child: SizedBox(
+                        width: double.infinity,
+
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const UploadStoryScreen(),
+                              ),
+                            );
+                          },
+
+                          icon: const Icon(Icons.add_circle),
+
+                          label: const Text("Add Story"),
+                        ),
+                      ),
+                    ),
+
+                    SizedBox(
+                      height: 105,
+
+                      child: StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseFirestore.instance
+                            .collection("stories")
+                            .where("expiresAt", isGreaterThan: DateTime.now())
+                            .orderBy("expiresAt", descending: false)
+                            .snapshots(),
+
+                        builder: (context, snapshot) {
+                          if (!snapshot.hasData) {
+                            return const Center(
+                              child: CircularProgressIndicator(),
+                            );
+                          }
+
+                          final stories = snapshot.data!.docs;
+
+                          if (stories.isEmpty) {
+                            return const Center(child: Text("No stories yet"));
+                          }
+
+                          return ListView.builder(
+                            scrollDirection: Axis.horizontal,
+
+                            itemCount: stories.length,
+
+                            itemBuilder: (context, index) {
+                              final storyDoc = stories[index];
+
+                              final storyData =
+                                  storyDoc.data() as Map<String, dynamic>;
+
+                              final name = storyData["userName"] ?? "User";
+
+                              final photoUrl = (storyData["photoUrl"] ?? "")
+                                  .toString();
+
+                              return GestureDetector(
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => StoriesScreen(
+                                        storyId: storyDoc.id,
+
+                                        userName: name,
+
+                                        storyUrl: storyData["storyUrl"] ?? "",
+
+                                        photoUrl: photoUrl,
+                                      ),
+                                    ),
+                                  );
+                                },
+
+                                child: Padding(
+                                  padding: const EdgeInsets.all(8),
+
+                                  child: Column(
+                                    children: [
+                                      CircleAvatar(
+                                        radius: 30,
+
+                                        backgroundColor: Colors.purple,
+
+                                        backgroundImage: photoUrl.isNotEmpty
+                                            ? NetworkImage(photoUrl)
+                                            : null,
+
+                                        child: photoUrl.isEmpty
+                                            ? const Icon(
+                                                Icons.person,
+                                                color: Colors.white,
+                                              )
+                                            : null,
+                                      ),
+
+                                      const SizedBox(height: 5),
+
+                                      SizedBox(
+                                        width: 65,
+
+                                        child: Text(
+                                          name,
+
+                                          overflow: TextOverflow.ellipsis,
+
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               );
                             },
-                            child: Padding(
-                              padding: const EdgeInsets.all(8),
-                              child: Column(
-                                children: [
-                                  const CircleAvatar(
-                                    radius: 30,
-                                    backgroundColor: Colors.purple,
-                                    child: Icon(
-                                      Icons.person,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 5),
-                                  Text(storyUserName),
-                                ],
-                              ),
-                            ),
                           );
                         },
                       ),
@@ -206,29 +308,38 @@ class HomeScreen extends StatelessWidget {
                             .collection("posts")
                             .orderBy("createdAt", descending: true)
                             .snapshots(),
+
                         builder: (context, snapshot) {
-                          if (snapshot.connectionState ==
-                              ConnectionState.waiting) {
+                          if (!snapshot.hasData) {
                             return const Center(
                               child: CircularProgressIndicator(),
                             );
                           }
 
-                          if (!snapshot.hasData ||
-                              snapshot.data!.docs.isEmpty) {
+                          final posts = snapshot.data!.docs.where((post) {
+                            final data = post.data() as Map<String, dynamic>;
+
+                            return !blockedUsers.contains(data["uid"]);
+                          }).toList();
+
+                          if (posts.isEmpty) {
                             return const Center(child: Text("No posts yet"));
                           }
 
-                          final posts = snapshot.data!.docs;
-
                           return ListView.builder(
                             itemCount: posts.length,
+
                             itemBuilder: (context, index) {
                               final post = posts[index];
+
                               final data = post.data() as Map<String, dynamic>;
 
                               final likes = data["likes"] ?? [];
+
                               final imageUrl = (data["imageUrl"] ?? "")
+                                  .toString();
+
+                              final photoUrl = (data["photoUrl"] ?? "")
                                   .toString();
 
                               final isLiked = likes.contains(currentUser.uid);
@@ -239,11 +350,14 @@ class HomeScreen extends StatelessWidget {
 
                               return Card(
                                 margin: const EdgeInsets.all(10),
+
                                 child: Padding(
                                   padding: const EdgeInsets.all(12),
+
                                   child: Column(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
+
                                     children: [
                                       ListTile(
                                         contentPadding: EdgeInsets.zero,
@@ -260,100 +374,56 @@ class HomeScreen extends StatelessWidget {
                                               ),
                                             );
                                           },
-                                          child: const CircleAvatar(
+
+                                          child: CircleAvatar(
                                             backgroundColor: Colors.purple,
-                                            child: Icon(
-                                              Icons.person,
-                                              color: Colors.white,
-                                            ),
+
+                                            backgroundImage: photoUrl.isNotEmpty
+                                                ? NetworkImage(photoUrl)
+                                                : null,
+
+                                            child: photoUrl.isEmpty
+                                                ? const Icon(
+                                                    Icons.person,
+                                                    color: Colors.white,
+                                                  )
+                                                : null,
                                           ),
                                         ),
 
-                                        title: GestureDetector(
-                                          onTap: () {
-                                            Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (context) =>
-                                                    UserProfileScreen(
-                                                      userId: data["uid"],
-                                                    ),
-                                              ),
-                                            );
-                                          },
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                data["userName"] ?? "User",
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                              Text(
-                                                "@${data["username"] ?? "user"}",
-                                                style: const TextStyle(
-                                                  color: Colors.purple,
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                            ],
+                                        title: Text(
+                                          data["userName"] ?? "User",
+
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
                                           ),
                                         ),
 
                                         subtitle: Text(
-                                          formatTime(data["createdAt"]),
+                                          "@${data["username"] ?? "user"} • ${formatTime(data["createdAt"])}",
                                         ),
-
-                                        trailing: isMyPost
-                                            ? IconButton(
-                                                onPressed: () {
-                                                  deletePost(post.id);
-                                                },
-                                                icon: const Icon(
-                                                  Icons.delete,
-                                                  color: Colors.red,
-                                                ),
-                                              )
-                                            : null,
                                       ),
-
-                                      const SizedBox(height: 10),
 
                                       if (imageUrl.isNotEmpty)
                                         ClipRRect(
                                           borderRadius: BorderRadius.circular(
                                             12,
                                           ),
+
                                           child: Image.network(
                                             imageUrl,
+
                                             height: 250,
+
                                             width: double.infinity,
+
                                             fit: BoxFit.cover,
-                                            errorBuilder:
-                                                (context, error, stackTrace) {
-                                                  return Container(
-                                                    height: 150,
-                                                    alignment: Alignment.center,
-                                                    color: Colors.grey[900],
-                                                    child: const Text(
-                                                      "Image failed to load",
-                                                    ),
-                                                  );
-                                                },
                                           ),
                                         ),
 
-                                      if (imageUrl.isNotEmpty)
-                                        const SizedBox(height: 10),
-
-                                      Text(
-                                        data["caption"] ?? "",
-                                        style: const TextStyle(fontSize: 16),
-                                      ),
-
                                       const SizedBox(height: 10),
+
+                                      Text(data["caption"] ?? ""),
 
                                       Row(
                                         children: [
@@ -366,10 +436,12 @@ class HomeScreen extends StatelessWidget {
                                                 data["uid"],
                                               );
                                             },
+
                                             icon: Icon(
                                               isLiked
                                                   ? Icons.favorite
                                                   : Icons.favorite_border,
+
                                               color: isLiked
                                                   ? Colors.red
                                                   : null,
@@ -378,47 +450,20 @@ class HomeScreen extends StatelessWidget {
 
                                           Text("${likes.length}"),
 
-                                          StreamBuilder<QuerySnapshot>(
-                                            stream: FirebaseFirestore.instance
-                                                .collection("posts")
-                                                .doc(post.id)
-                                                .collection("comments")
-                                                .snapshots(),
-                                            builder: (context, commentSnapshot) {
-                                              final commentCount =
-                                                  commentSnapshot
-                                                      .data
-                                                      ?.docs
-                                                      .length ??
-                                                  0;
-
-                                              return Row(
-                                                children: [
-                                                  IconButton(
-                                                    onPressed: () {
-                                                      Navigator.push(
-                                                        context,
-                                                        MaterialPageRoute(
-                                                          builder: (context) =>
-                                                              CommentsScreen(
-                                                                postId: post.id,
-                                                              ),
-                                                        ),
-                                                      );
-                                                    },
-                                                    icon: const Icon(
-                                                      Icons.comment_outlined,
-                                                    ),
-                                                  ),
-                                                  Text("$commentCount"),
-                                                ],
+                                          IconButton(
+                                            onPressed: () {
+                                              Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                  builder: (context) =>
+                                                      CommentsScreen(
+                                                        postId: post.id,
+                                                      ),
+                                                ),
                                               );
                                             },
-                                          ),
 
-                                          IconButton(
-                                            onPressed: () {},
-                                            icon: const Icon(Icons.send),
+                                            icon: const Icon(Icons.comment),
                                           ),
 
                                           const Spacer(),
@@ -431,13 +476,11 @@ class HomeScreen extends StatelessWidget {
                                                 currentUser.uid,
                                               );
                                             },
+
                                             icon: Icon(
                                               isSaved
                                                   ? Icons.bookmark
                                                   : Icons.bookmark_border,
-                                              color: isSaved
-                                                  ? Colors.purple
-                                                  : null,
                                             ),
                                           ),
                                         ],
